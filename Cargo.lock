@@ -1,0 +1,4 @@
+[root]
+name = "rust-fractals"
+version = "0.1.0"
+
