@@ -1,59 +1,75 @@
-use std::ops::Add;
-use std::ops::Mul;
+extern crate sdl2;
 
-struct Complex {
-	re: f64,
-	im: f64,
-}
+use sdl2::event::{Event};
+use sdl2::rect::{Rect};
+use sdl2::keyboard::{Keycode};
+use sdl2::render::{TextureAccess};
+use sdl2::pixels::{Color, PixelFormatEnum};
 
-impl Copy for Complex {}
+mod complex;
+use complex::{c64};
 
-impl Clone for Complex {
-    fn clone(&self) -> Complex { *self }
-}
-
-impl Add for Complex {
-	type Output = Complex;
-	fn add(self, other: Complex) -> Complex {
-		Complex { re: self.re + other.re, im: self.im + other.im }
+fn trace(c: c64, n: u32) -> u8 {
+	let mut k: u32 = 0;
+	let mut z = c64::from((0.0, 0.0));
+	for i in 0..n {
+		z = z*z + c;
+		if z.abs2() > 4.0 {
+			k = i; 
+			break;
+		}
 	}
-}
-
-impl Mul for Complex {
-	type Output = Complex;
-	fn mul(self, other: Complex) -> Complex {
-		Complex { re: self.re*other.re - self.im*other.im, im: self.re*other.im + self.im*other.re }
-	}
-}
-
-fn abs2(var: Complex) -> f64 {
-	var.re*var.re + var.im*var.im
+	let f = (k as f64)/((n - 1) as f64);
+	((255 as f64)*f) as u8
 }
 
 fn main() {
-	let xrange = 32;
-	let yrange = 32;
-	let depth = 32;
-	for iy in (1 - yrange)..yrange {
-		for ix in (1 - xrange)..xrange {
-			let c = Complex { re: 2.0/(xrange as f64)*(ix as f64), im: 1.5/(yrange as f64)*(iy as f64) };
-			let mut a = c;
-			let mut d = -1;
-			for i in 0 .. depth {
-				a = a*a + c;
-				if abs2(a) > 2.0 {
-					d = i;
-					break;
-				}
-			}
-			if d < 0 {
-				print!(" ");
-			} else if (d as f64) < 0.5*(depth as f64) {
-				print!(".");
-			} else {
-				print!("#");
+	let ctx = sdl2::init().unwrap();
+	let video_ctx = ctx.video().unwrap();
+	
+	let width = 800;
+	let height = 600;
+	let screen_rect = Rect::new(0, 0, width, height);
+	let window = video_ctx.window("SDL2", width, height).position_centered().opengl().build().unwrap();
+
+	let mut renderer = window.renderer().build().unwrap();
+
+	let mut texture = renderer.create_texture(PixelFormatEnum::ARGB8888, TextureAccess::Streaming, width, height).unwrap();
+
+	texture.with_lock(Some(screen_rect), |pixels: &mut [u8], pitch: usize| {
+		for y in 0..height {
+			for x in 0..width {
+				let pos = c64::from((
+					(x as f64 - 0.5*width as f64)/(height - 1) as f64,
+					(y as f64 - 0.5*height as f64)/(height - 1) as f64
+				));
+				let t = trace(c64::from(4.0)*pos, 36);
+
+				let offset = pitch*(y as usize) + 4*(x as usize);
+				pixels[offset + 0] = t;
+				pixels[offset + 1] = t;
+				pixels[offset + 2] = t;
+				pixels[offset + 3] = 255;
 			}
 		}
-		println!("");
+	}).unwrap();
+
+	let mut events = ctx.event_pump().unwrap();
+	'main : loop {
+		for event in events.poll_iter() {
+			match event {
+				Event::Quit{..} => break 'main,
+				Event::KeyDown{keycode, ..} => 
+					if keycode.unwrap() == Keycode::Escape { break 'main; },
+				_ => continue,
+			}
+		}
+
+		renderer.set_draw_color(Color::RGB(0, 0, 0));
+		renderer.clear();
+
+		renderer.copy(&texture, None, Some(screen_rect)).unwrap();
+
+		renderer.present();
 	}
 }
