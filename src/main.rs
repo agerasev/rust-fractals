@@ -5,6 +5,7 @@ use std::thread;
 use std::sync::{Arc, Mutex};
 use std::ops::{Deref, DerefMut};
 use std::time::{Duration};
+use std::f64::consts::PI;
 
 use sdl2::event::{Event};
 use sdl2::rect::{Rect};
@@ -13,38 +14,10 @@ use sdl2::render::{Texture, TextureAccess};
 use sdl2::pixels::{PixelFormatEnum};
 
 mod complex;
+mod canvas;
+
 use complex::{c64};
-
-struct Point {
-	depth: u64,
-	frac: f64
-}
-
-impl Point {
-	fn new() -> Self {
-		Point { depth: 0, frac: 0.0 }
-	}
-}
-
-impl Clone for Point {
-	fn clone(&self) -> Self {
-		Point { depth: self.depth, frac: self.frac }
-	}
-}
-
-impl Copy for Point {}
-
-struct Canvas {
-	width: u32,
-	height: u32,
-	data: Vec<Point>
-}
-
-impl Canvas {
-	fn new(w: u32, h: u32) -> Self {
-		Canvas { width: w, height: h, data: vec![Point::new(); (w*h) as usize] }
-	}
-}
+use canvas::*;
 
 struct Scene {
 	pos: c64,
@@ -52,8 +25,8 @@ struct Scene {
 }
 
 fn trace(c: c64, n: u64) -> u64 {
-	let mut z = c64::new(0.0, 0.0);
-	for i in 0..n {
+	let mut z = c;
+	for i in 1..n {
 		z = z*z + c;
 		if z.abs2() > 4.0 {
 			return i;
@@ -73,24 +46,41 @@ fn ttos(scene: &Scene, x: u32, y: u32, w: u32, h: u32) -> c64 {
 	scene.pos + ttos_rel(scene, x, y, w, h)
 }
 
+fn stor(scene: &Scene, dir: c64) -> (i32, usize) {
+	let d = -dir.abs().log(RING_STEP).round() as i32;
+	let a = dir/scene.zoom;
+	let mut p = a.im.atan2(a.re);
+	p += if p < 0.0 {2.0*PI} else {0.0};
+	p *= (RING_SIZE as f64)/(2.0*PI);
+	(d, p.floor() as usize)
+}
+
 fn render(scene: &Scene, canvas: &mut Canvas) {
-	let w = canvas.width;
-	let h = canvas.height;
-	for y in 0..h {
-		for x in 0..w {
-			canvas.data[(y*w + x) as usize].depth = trace(ttos(&scene, x, y, w, h), 36);
+	canvas.rings.clear();
+	for d in 0..100 {
+		let mut ring = Ring::new(d);
+		let mut rs = scene.zoom*c64::from(RING_START*RING_STEP.powi(-(d as i32)));
+		let ra = 2.0*PI/RING_SIZE as f64;
+		for p in 0..RING_SIZE {
+			let pos = scene.pos + rs*c64::new((ra*p as f64).cos(), (ra*p as f64).sin());
+			ring.points[p].depth = trace(pos, 36);
 		}
+		canvas.rings.push(ring);
 	}
 }
 
-fn draw(canvas: &Canvas, texture: &mut Texture) {
+fn draw(scene: &Scene, canvas: &Canvas, texture: &mut Texture) {
 	let query = texture.query();
 	let width = query.width;
 	let height = query.height;
 	texture.with_lock(None, |pixels: &mut [u8], pitch: usize| {
 		for y in 0..height {
 			for x in 0..width {
-				let t = canvas.data[(y*width + x) as usize].depth % 8;
+				let (mut d, mut p) = stor(scene, ttos_rel(scene, x, y, width, height));
+				if d < 0 { d = 0; }
+				if d >= canvas.rings.len() as i32 { d = canvas.rings.len() as i32 - 1; }
+
+				let t = canvas.rings[d as usize].points[p].depth % 8;
 				let offset = pitch*(y as usize) + 4*(x as usize);
 				pixels[offset + 0] = 255*((t>>2) & 1) as u8;
 				pixels[offset + 1] = 255*((t>>1) & 1) as u8;
@@ -120,7 +110,7 @@ fn main() {
 	let mut scene = Arc::new(Mutex::new(Scene { pos: c64::from(0.0), zoom: c64::from(2.0) }));
 	let scene_ref = scene.clone();
 
-	let canvas = Arc::new(Mutex::new(Canvas::new(width, height)));
+	let canvas = Arc::new(Mutex::new(Canvas::new(0)));
 	let mut canvas_ref = canvas.clone();
 
 	let mut done = Arc::new(Mutex::new(false));
@@ -152,7 +142,7 @@ fn main() {
 		}
 
 		if *redraw.lock().unwrap().deref() {
-			draw(canvas.lock().unwrap().deref(), &mut texture);
+			draw(scene.lock().unwrap().deref(), canvas.lock().unwrap().deref(), &mut texture);
 			renderer.copy(&texture, None, Some(screen_rect)).unwrap();
 			renderer.present();
 			*redraw.lock().unwrap().deref_mut() = false;
@@ -162,4 +152,6 @@ fn main() {
 	}
 
 	*done.lock().unwrap().deref_mut() = true;
+	thread_handle.thread().unpark();
+	thread_handle.join().unwrap();
 }
