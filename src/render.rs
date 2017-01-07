@@ -15,6 +15,14 @@ fn trace(c: c64, n: u64) -> u64 {
 	0
 }
 
+fn check_cardio(c: c64) -> bool {
+	let re_4 = c.re - 0.25;
+	let im2 = c.im*c.im;
+	let p = (re_4*re_4 + im2).sqrt();
+	let re1 = c.re + 1.0;
+	return re_4 < p - 2.0*p*p || re1*re1 + im2 < 0.0625;
+}
+
 pub struct Point {
 	pub depth: u64,
 	pub frac: f64
@@ -26,7 +34,11 @@ impl Point {
 	}
 
 	pub fn trace(&mut self, c: c64, n: u64) {
-		self.depth = trace(c, n);
+		self.depth = if check_cardio(c) {
+			0
+		} else {
+			trace(c, n)
+		};
 	}
 }
 
@@ -107,7 +119,7 @@ impl Tube {
 		if self.begin + self.rings.len() >= end || self.zero {
 			return Status::Idle;
 		}
-		let mut time = Instant::now();
+		let time = Instant::now();
 		for i in (self.begin + self.rings.len())..end {
 			let mut ring = Ring::new();
 			let zoom = c64::from(self.rad*self.step.powi(-(i as i32)));

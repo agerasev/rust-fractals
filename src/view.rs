@@ -1,4 +1,5 @@
 use complex::{c64};
+use std::time::{Duration, Instant};
 
 use sdl2::render::{Texture};
 use render::{Tube};
@@ -27,7 +28,7 @@ impl View {
 		)
 	}
 
-	pub fn draw(&self, tube: &Tube, texture: &mut Texture) {
+	pub fn draw(&self, tube: &Tube, texture: &mut Texture, ) {
 		if tube.rings.len() > 0 {
 			let query = texture.query();
 			let width = query.width;

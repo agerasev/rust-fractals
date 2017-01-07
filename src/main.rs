@@ -3,7 +3,7 @@ extern crate sdl2;
 use std::thread;
 use std::sync::{Arc, Mutex};
 use std::ops::{Deref, DerefMut};
-use std::time::{Duration, Instant};
+use std::time::{Duration};
 
 use sdl2::event::{Event};
 use sdl2::rect::{Rect};
@@ -55,7 +55,6 @@ fn main() {
 	
 	let width = 800;
 	let height = 600;
-	let screen_rect = Rect::new(0, 0, width, height);
 	let window = video_ctx.window("Rust Fractals", width, height).position_centered().build().unwrap();
 
 	let mut renderer = window.renderer().build().unwrap();
@@ -67,7 +66,7 @@ fn main() {
 
 	let mut view = View::new(c64::from(0.0), c64::from(2.0));
 
-	let tube = Arc::new(Mutex::new(Tube::new(2.01, 1024, 1.0 + 1e-2, 32)));
+	let tube = Arc::new(Mutex::new(Tube::new(2.01, 1024, 1.0 + 1e-2, 256)));
 	let tube_ref = tube.clone();
 	
 	tube.lock().unwrap().deref_mut().put(c64::new(0.0, 0.0), 0);
