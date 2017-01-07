@@ -5,4 +5,4 @@ authors = ["Alexey Gerasev <alexey.gerasev@gmail.com>"]
 
 [dependencies]
 num = "0.1.36"
-sdl2 = "0.24.0"
+sdl2 = "0.27.3"

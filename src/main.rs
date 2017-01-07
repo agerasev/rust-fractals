@@ -8,16 +8,46 @@ use std::time::{Duration, Instant};
 use sdl2::event::{Event};
 use sdl2::rect::{Rect};
 use sdl2::keyboard::{Keycode};
+use sdl2::mouse::{MouseButton};
 use sdl2::render::{TextureAccess};
 use sdl2::pixels::{PixelFormatEnum};
 
 mod complex;
-mod camera;
+mod view;
 mod render;
 
 use complex::{c64};
-use camera::{Camera};
-use render::{Tube};
+use view::{View};
+use render::{Tube, Status};
+
+struct Shared {
+	redraw: bool,
+	done: bool
+}
+
+impl Shared {
+	fn new() -> Self {
+		Shared { redraw: true, done: false }
+	}
+}
+
+struct Control {
+	lmb: bool,
+	x: i32,
+	y: i32,
+	dx: i32,
+	dy: i32
+}
+
+impl Control {
+	fn new() -> Self {
+		Control { 
+			lmb: false,
+			x: 0, y: 0,
+			dx: 0, dy: 0
+		}
+	}
+}
 
 fn main() {
 	let ctx = sdl2::init().unwrap();
@@ -26,35 +56,38 @@ fn main() {
 	let width = 800;
 	let height = 600;
 	let screen_rect = Rect::new(0, 0, width, height);
-	let window = video_ctx.window("SDL2", width, height).position_centered().opengl().build().unwrap();
+	let window = video_ctx.window("Rust Fractals", width, height).position_centered().build().unwrap();
 
 	let mut renderer = window.renderer().build().unwrap();
 
 	let mut texture = renderer.create_texture(PixelFormatEnum::ARGB8888, TextureAccess::Streaming, width, height).unwrap();
 	
-	let redraw = Arc::new(Mutex::new(true));
-	let redraw_ref = redraw.clone();
+	let shared = Arc::new(Mutex::new(Shared::new()));
+	let shared_ref = shared.clone();
 
-	let mut camera = Arc::new(Mutex::new(Camera { pos: c64::from(0.0), zoom: c64::from(2.0) }));
-	let camera_ref = camera.clone();
+	let mut view = View::new(c64::from(0.0), c64::from(2.0));
 
-	let tube = Arc::new(Mutex::new(Tube::new(c64::new(0.0, 0.0), 2.01, 1024, 1.0 + 1e-2, 32, 0)));
-	let mut tube_ref = tube.clone();
+	let tube = Arc::new(Mutex::new(Tube::new(2.01, 1024, 1.0 + 1e-2, 32)));
+	let tube_ref = tube.clone();
+	
+	tube.lock().unwrap().deref_mut().put(c64::new(0.0, 0.0), 0);
 
-	let mut done = Arc::new(Mutex::new(false));
-	let mut done_ref = done.clone(); 
-	let mut thread_handle = thread::spawn(move || {
-		let mut time = Instant::now();
-		while !done_ref.lock().unwrap().deref() {
-			tube_ref.lock().unwrap().deref_mut().render();
-			if time.elapsed() > Duration::from_millis(200) {
-				*redraw_ref.lock().unwrap().deref_mut() = true;
-				thread::park();
-				time = Instant::now();
+	let rth = thread::spawn(move || {
+		while !shared_ref.lock().unwrap().deref().done {
+			let status = tube_ref.lock().unwrap().deref_mut().render(1000, Duration::from_millis(40));
+			match status {
+				Status::Timeout | Status::Done => shared_ref.lock().unwrap().deref_mut().redraw = true,
+				_ => {}
+			}
+			match status {
+				Status::Done | Status::Idle => thread::park(),
+				_ => {}
 			}
 		}
 	});
 
+	let mut blit = false;
+	let mut control = Control::new();
 	let mut events = ctx.event_pump().unwrap();
 	'main : loop {
 		for event in events.poll_iter() {
@@ -65,26 +98,66 @@ fn main() {
 				Event::MouseWheel{y, ..} => {
 					if y != 0 {
 						// let s = events.mouse_state().x();
-						camera.lock().unwrap().deref_mut().zoom *= c64::from((1.2 as f64).powi(-y));
-						*redraw.lock().unwrap().deref_mut() = true;
+						view.zoom *= c64::from((1.2 as f64).powi(-y));
+						shared.lock().unwrap().deref_mut().redraw = true;
+						rth.thread().unpark();
 					}
 				},
+				Event::MouseButtonDown{mouse_btn, x, y, ..} => {
+					match mouse_btn {
+						MouseButton::Left => {
+							control.lmb = true;
+							control.x = x;
+							control.y = y;
+						},
+						_ => {}
+					}
+				},
+				Event::MouseButtonUp{mouse_btn, ..} => {
+					match mouse_btn {
+						MouseButton::Left => {
+							let pos = view.pos - view.pix_dev(control.dx, control.dy, width, height);
+							view.pos = pos;
+							tube.lock().unwrap().deref_mut().put(pos, 0);
+
+							rth.thread().unpark();
+							shared.lock().unwrap().deref_mut().redraw = true;
+
+							control.lmb = false;
+							control.dx = 0;
+							control.dy = 0;
+						},
+						_ => {}
+					}
+				},
+				Event::MouseMotion{x, y, ..} => {
+					if control.lmb {
+						control.dx = x - control.x;
+						control.dy = y - control.y;
+						blit = true;
+					}
+				}
 				_ => continue,
 			}
 		}
 
-		if *redraw.lock().unwrap().deref() {
-			camera.lock().unwrap().deref().draw(tube.lock().unwrap().deref(), &mut texture);
-			renderer.copy(&texture, None, Some(screen_rect)).unwrap();
+		if shared.lock().unwrap().deref().redraw {
+			view.draw(tube.lock().unwrap().deref(), &mut texture);
+			shared.lock().unwrap().deref_mut().redraw = false;
+			blit = true;
+		}
+
+		if blit {
+			renderer.clear();
+			renderer.copy(&texture, None, Some(Rect::new(control.dx, control.dy, width, height))).unwrap();
 			renderer.present();
-			*redraw.lock().unwrap().deref_mut() = false;
-			thread_handle.thread().unpark();
+			blit = false;
 		}
 
 		thread::sleep(Duration::from_millis(40));
 	}
 
-	*done.lock().unwrap().deref_mut() = true;
-	thread_handle.thread().unpark();
-	thread_handle.join().unwrap();
+	shared.lock().unwrap().deref_mut().done = true;
+	rth.thread().unpark();
+	rth.join().unwrap();
 }
