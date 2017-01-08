@@ -21,14 +21,32 @@ use view::{View};
 use render::{Tube, Status};
 
 struct Shared {
+	zmax: u64,
+	zmin: u64,
 	redraw: bool,
 	done: bool
 }
 
 impl Shared {
 	fn new() -> Self {
-		Shared { redraw: true, done: false }
+		Shared { redraw: true, done: false, zmin: 0, zmax: 0 }
 	}
+
+	fn set_zoom(&mut self, zmin: u64, zmax: u64) {
+		self.zmin = zmin;
+		self.zmax = zmax;
+	}
+}
+
+fn get_zoom(mag: c64, w: u32, h: u32, rad: f64, step: f64) -> (u64, u64) {
+	let mp = ((w*w + h*h) as f64).sqrt();
+	let mr = mag.abs()*(mp/h as f64);
+	let mut zmin = -(mr/rad).log(step).round() as i64;
+	if zmin < 0 {
+		zmin = 0;
+	}
+	let zmax = zmin + mp.log(step).round() as i64;
+	return (zmin as u64, zmax as u64);
 }
 
 struct Control {
@@ -64,16 +82,27 @@ fn main() {
 	let shared = Arc::new(Mutex::new(Shared::new()));
 	let shared_ref = shared.clone();
 
-	let mut view = View::new(c64::from(0.0), c64::from(2.0));
+	let pos = c64::from(0.0);
+	let mag = c64::from(2.0);
 
-	let tube = Arc::new(Mutex::new(Tube::new(2.01, 1024, 1.0 + 1e-2, 256)));
+	let rad = 2.01;
+	let seg = 1024;
+	let step = 1.0 + 1e-2;
+	let depth = 256;
+
+	let mut view = View::new(pos, mag);
+
+	let tube = Arc::new(Mutex::new(Tube::new(rad, seg, step, depth)));
 	let tube_ref = tube.clone();
 	
-	tube.lock().unwrap().deref_mut().put(c64::new(0.0, 0.0), 0);
+	let zmm = get_zoom(mag, width, height, rad, step);
+	shared.lock().unwrap().deref_mut().set_zoom(zmm.0, zmm.1);
+	tube.lock().unwrap().deref_mut().put(pos, zmm.0 as usize);
 
 	let rth = thread::spawn(move || {
 		while !shared_ref.lock().unwrap().deref().done {
-			let status = tube_ref.lock().unwrap().deref_mut().render(1000, Duration::from_millis(40));
+			let zmax = shared_ref.lock().unwrap().deref().zmax;
+			let status = tube_ref.lock().unwrap().deref_mut().render(zmax as usize, Duration::from_millis(40));
 			match status {
 				Status::Timeout | Status::Done => shared_ref.lock().unwrap().deref_mut().redraw = true,
 				_ => {}
@@ -97,7 +126,12 @@ fn main() {
 				Event::MouseWheel{y, ..} => {
 					if y != 0 {
 						// let s = events.mouse_state().x();
-						view.zoom *= c64::from((1.2 as f64).powi(-y));
+						let mag = view.mag*c64::from((1.2 as f64).powi(-y));
+						view.zoom(mag);
+						
+						let zmm = get_zoom(mag, width, height, rad, step);
+						shared.lock().unwrap().deref_mut().set_zoom(zmm.0, zmm.1);
+
 						shared.lock().unwrap().deref_mut().redraw = true;
 						rth.thread().unpark();
 					}
@@ -116,8 +150,8 @@ fn main() {
 					match mouse_btn {
 						MouseButton::Left => {
 							let pos = view.pos - view.pix_dev(control.dx, control.dy, width, height);
-							view.pos = pos;
-							tube.lock().unwrap().deref_mut().put(pos, 0);
+							view.put(pos);
+							tube.lock().unwrap().deref_mut().put(pos, shared.lock().unwrap().deref().zmin as usize);
 
 							rth.thread().unpark();
 							shared.lock().unwrap().deref_mut().redraw = true;

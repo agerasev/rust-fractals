@@ -140,8 +140,8 @@ impl Tube {
 		let dev = pos - self.pos;
 
 		let mut d = -(dev.abs()/self.rad).log(self.step).round() as i64;
-		if d < 0 { d = 0; }
-		if d >= self.rings.len() as i64 { d = self.rings.len() as i64 - 1; }
+		if d < self.begin as i64 { d = self.begin as i64; }
+		if d >= self.rings.len() as i64 + self.begin as i64 { d = self.rings.len() as i64 + self.begin as i64 - 1; }
 		let ir = d as usize;
 
 		let mut p = dev.im.atan2(dev.re);
