@@ -21,8 +21,8 @@ use view::{View};
 use render::{Tube, Status};
 
 struct Shared {
-	zmax: u64,
-	zmin: u64,
+	zmax: usize,
+	zmin: usize,
 	redraw: bool,
 	done: bool
 }
@@ -32,13 +32,13 @@ impl Shared {
 		Shared { redraw: true, done: false, zmin: 0, zmax: 0 }
 	}
 
-	fn set_zoom(&mut self, zmin: u64, zmax: u64) {
+	fn set_zoom(&mut self, zmin: usize, zmax: usize) {
 		self.zmin = zmin;
 		self.zmax = zmax;
 	}
 }
 
-fn get_zoom(mag: c64, w: u32, h: u32, rad: f64, step: f64) -> (u64, u64) {
+fn get_zoom(mag: c64, w: u32, h: u32, rad: f64, step: f64) -> (usize, usize) {
 	let mp = ((w*w + h*h) as f64).sqrt();
 	let mr = mag.abs()*(mp/h as f64);
 	let mut zmin = -(mr/rad).log(step).round() as i64;
@@ -46,7 +46,7 @@ fn get_zoom(mag: c64, w: u32, h: u32, rad: f64, step: f64) -> (u64, u64) {
 		zmin = 0;
 	}
 	let zmax = zmin + mp.log(step).round() as i64;
-	return (zmin as u64, zmax as u64);
+	return (zmin as usize, zmax as usize);
 }
 
 struct Control {
@@ -85,7 +85,7 @@ fn main() {
 	let pos = c64::from(0.0);
 	let mag = c64::from(2.0);
 
-	let rad = 2.01;
+	let rad = 4.0;
 	let seg = 1024;
 	let step = 1.0 + 1e-2;
 	let depth = 256;
@@ -97,12 +97,13 @@ fn main() {
 	
 	let zmm = get_zoom(mag, width, height, rad, step);
 	shared.lock().unwrap().deref_mut().set_zoom(zmm.0, zmm.1);
-	tube.lock().unwrap().deref_mut().put(pos, zmm.0 as usize);
+	tube.lock().unwrap().deref_mut().put(pos);
 
 	let rth = thread::spawn(move || {
 		while !shared_ref.lock().unwrap().deref().done {
-			let zmax = shared_ref.lock().unwrap().deref().zmax;
-			let status = tube_ref.lock().unwrap().deref_mut().render(zmax as usize, Duration::from_millis(40));
+			let begin = shared_ref.lock().unwrap().deref_mut().zmin;
+			let end = shared_ref.lock().unwrap().deref_mut().zmax;
+			let status = tube_ref.lock().unwrap().deref_mut().render(begin, end, Duration::from_millis(40));
 			match status {
 				Status::Timeout | Status::Done => shared_ref.lock().unwrap().deref_mut().redraw = true,
 				_ => {}
@@ -151,10 +152,10 @@ fn main() {
 						MouseButton::Left => {
 							let pos = view.pos - view.pix_dev(control.dx, control.dy, width, height);
 							view.put(pos);
-							tube.lock().unwrap().deref_mut().put(pos, shared.lock().unwrap().deref().zmin as usize);
+							tube.lock().unwrap().deref_mut().put(pos);
 
 							rth.thread().unpark();
-							shared.lock().unwrap().deref_mut().redraw = true;
+							// shared.lock().unwrap().deref_mut().redraw = true;
 
 							control.lmb = false;
 							control.dx = 0;
@@ -175,8 +176,9 @@ fn main() {
 		}
 
 		if shared.lock().unwrap().deref().redraw {
-			view.draw(tube.lock().unwrap().deref(), &mut texture);
-			shared.lock().unwrap().deref_mut().redraw = false;
+			if view.draw(tube.lock().unwrap().deref(), &mut texture, Duration::from_millis(40)) {
+				shared.lock().unwrap().deref_mut().redraw = false;
+			}
 			blit = true;
 		}
 
