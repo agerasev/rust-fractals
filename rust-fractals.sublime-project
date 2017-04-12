@@ -1,0 +1,37 @@
+{
+	"folders":
+	[
+		{
+			"path": "."
+		}
+	],
+
+	"build_systems":
+	[
+		{
+			"name": "Cargo Build",
+			"shell_cmd": "cargo build",
+			"working_dir": "${project_path}"
+		},
+		{
+			"name": "Cargo Run",
+			"shell_cmd": "cargo run",
+			"working_dir": "${project_path}"
+		},
+		{
+			"name": "Cargo Test",
+			"shell_cmd": "cargo test",
+			"working_dir": "${project_path}"
+		},
+		{
+			"name": "Cargo Build Release",
+			"shell_cmd": "cargo build --release",
+			"working_dir": "${project_path}"
+		},
+		{
+			"name": "Cargo Run Release",
+			"shell_cmd": "cargo run --release",
+			"working_dir": "${project_path}"
+		},
+	]
+}

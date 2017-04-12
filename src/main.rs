@@ -1,9 +1,13 @@
+extern crate rugcom;
 extern crate sdl2;
 
 use std::thread;
 use std::sync::{Arc, Mutex};
 use std::ops::{Deref, DerefMut};
 use std::time::{Duration};
+
+use rugflo::{Float};
+use rugcom::{Complex};
 
 use sdl2::event::{Event};
 use sdl2::rect::{Rect};
@@ -12,11 +16,9 @@ use sdl2::mouse::{MouseButton};
 use sdl2::render::{TextureAccess};
 use sdl2::pixels::{PixelFormatEnum};
 
-mod complex;
 mod view;
 mod render;
 
-use complex::{c64};
 use view::{View};
 use render::{Tube, Status};
 
@@ -38,6 +40,7 @@ impl Shared {
 	}
 }
 
+/*
 fn get_zoom(mag: c64, w: u32, h: u32, rad: f64, step: f64) -> (usize, usize) {
 	let mp = ((w*w + h*h) as f64).sqrt();
 	let mr = mag.abs()*(mp/h as f64);
@@ -66,6 +69,7 @@ impl Control {
 		}
 	}
 }
+*/
 
 fn main() {
 	let ctx = sdl2::init().unwrap();
@@ -95,7 +99,7 @@ fn main() {
 	let tube = Arc::new(Mutex::new(Tube::new(rad, seg, step, depth)));
 	let tube_ref = tube.clone();
 	
-	let zmm = get_zoom(mag, width, height, rad, step);
+	let zmm = (0, 1000);// get_zoom(mag, width, height, rad, step);
 	shared.lock().unwrap().deref_mut().set_zoom(zmm.0, zmm.1);
 	tube.lock().unwrap().deref_mut().put(pos);
 
@@ -116,7 +120,7 @@ fn main() {
 	});
 
 	let mut blit = false;
-	let mut control = Control::new();
+	// let mut control = Control::new();
 	let mut events = ctx.event_pump().unwrap();
 	'main : loop {
 		for event in events.poll_iter() {
@@ -124,6 +128,7 @@ fn main() {
 				Event::Quit{..} => break 'main,
 				Event::KeyDown{keycode, ..} => 
 					if keycode.unwrap() == Keycode::Escape { break 'main; },
+				/*
 				Event::MouseWheel{y, ..} => {
 					if y != 0 {
 						// let s = events.mouse_state().x();
@@ -170,7 +175,8 @@ fn main() {
 						control.dy = y - control.y;
 						blit = true;
 					}
-				}
+				},
+				*/
 				_ => continue,
 			}
 		}

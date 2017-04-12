@@ -1,7 +1,8 @@
 use std::time::{Duration, Instant};
 use std::cmp::{min, max};
 
-use complex::{c64};
+use rugflo::{Float};
+use rugcom::{Complex};
 
 use sdl2::rect::{Rect};
 use sdl2::render::{Texture};

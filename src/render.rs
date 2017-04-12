@@ -1,8 +1,9 @@
-use complex::{c64};
 use std::f64::consts::PI;
 
 use std::time::{Duration, Instant};
 
+use rugflo::{Float};
+use rugcom::{Complex};
 
 fn trace(c: c64, n: usize) -> usize {
 	let mut z = c;
